@@ -47,22 +47,85 @@ class ModelTrainer(object):
         self.logger = get_logger(job_dir)
         self.stop_signal = False
 
+
+
     def step(self, epoch, dataloader, is_training=True):
         self.model.train() if is_training else self.model.eval()
+
+        # TODO: Make this a config parameter. Found that training mean first doesn't help on this dataset.
+        train_mean_first = False
+
+        if train_mean_first:
+            #Determine if parameters should be trained or not
+            train_all_params = epoch >= 300
+
+            if epoch == 0 or epoch == 300:
+                for name, param in self.model.named_parameters():
+                    if 'cov' in name:
+                        print("Freezing / Unfreezing ", name)
+                        param.requires_grad = train_all_params
+
+
+
+        self.lr_scheduler.optimizer.zero_grad()
+
         for inputs in dataloader:
             inputs = {key: value.to(self.device) for key, value in inputs.items()}
-            self.lr_scheduler.optimizer.zero_grad()
+
             with torch.set_grad_enabled(is_training):
                 logits, state = self.model(**inputs)
                 state.update(inputs)
                 loss = self.criterion(logits, **state)
+
                 if is_training:
                     loss.backward()
                     self.lr_scheduler.optimizer.step()
-            prob, pred = self.predict_fn(logits)
-            state.update({'epoch': epoch, 'loss': loss, 'logits': logits, 'prob': prob, 'pred': pred})
-            state = detach_state(state)
-            yield state
+
+        prob, pred = self.predict_fn(logits)
+        state.update({'epoch': epoch, 'loss': loss, 'logits': logits, 'prob': prob, 'pred': pred})
+        state = detach_state(state)
+        yield state
+
+
+
+    # def step(self, epoch, dataloader, is_training=True):
+    #     self.model.train() if is_training else self.model.eval()
+    #     for inputs in dataloader:
+    #         inputs = {key: value.to(self.device) for key, value in inputs.items()}
+    #         self.lr_scheduler.optimizer.zero_grad()
+    #         with torch.set_grad_enabled(is_training):
+    #             logits, state = self.model(**inputs)
+    #             state.update(inputs)
+    #             loss = self.criterion(logits, **state)
+    #             if is_training:
+    #                 if epoch < 600:
+    #                     filtered_parameters = []
+    #                     unfiltered_parameters = []
+    #                     for name, param in self.model.named_parameters():
+    #                         if 'cov_diag' not in name and 'cov_factor' not in name:
+    #                             unfiltered_parameters.append(param)
+    #                         else:
+    #                             filtered_parameters.append(param)
+                        
+    #                     optimizer = self.lr_scheduler.optimizer
+    #                     optimizer.zero_grad(set_to_none=True)
+    #                     loss.backward()
+
+    #                     # Update the gradients of unfiltered parameters
+    #                     for param in unfiltered_parameters:
+    #                         if param.grad is not None:
+    #                             param.grad.detach_()
+    #                             param.grad.zero_()
+
+    #                     optimizer.step()
+    #                 else:
+    #                     loss.backward()
+    #                     self.lr_scheduler.optimizer.step()
+    #         prob, pred = self.predict_fn(logits)
+           
+    #         state.update({'epoch': epoch, 'loss': loss, 'logits': logits, 'prob': prob, 'pred': pred})
+    #         state = detach_state(state)
+    #         yield state
 
     def _run_epoch(self, epoch, dataloader):
         [hook.before_epoch() for hook in self.hooks]
@@ -70,7 +133,7 @@ class ModelTrainer(object):
             self.current_state.update(state)
             [hook.after_batch() for hook in self.hooks]
         [hook.after_epoch() for hook in self.hooks]
-        self.lr_scheduler.step(epoch)
+        self.lr_scheduler.step()
         return
 
     def __call__(self, dataloader, num_epochs):
