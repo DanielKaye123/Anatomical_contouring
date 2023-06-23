@@ -1,5 +1,5 @@
 # Anatomical_contouring
-Final year project doe
+Final year project repo.
 
 Stochastic segmentation code is originally from paper / repo:
 https://github.com/biomedia-mira/stochastic_segmentation_networks
