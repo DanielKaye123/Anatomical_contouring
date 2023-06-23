@@ -38,7 +38,12 @@ class StochasticSegmentationNetworkLossMCIntegral(nn.Module):
         logit_sample = logit_sample.view((flat_size, num_classes, -1))
         target = target.reshape((flat_size, -1))
 
-        log_prob = -F.cross_entropy(logit_sample, target, reduction='none').view((self.num_mc_samples, batch_size, -1))
+
+        #TODO: make a label smoothing a parameter
+        log_prob = -F.cross_entropy(logit_sample, target, reduction='none', label_smoothing=0.05).view((self.num_mc_samples, batch_size, -1))
         loglikelihood = torch.mean(torch.logsumexp(torch.sum(log_prob, dim=-1), dim=0) - math.log(self.num_mc_samples))
         loss = -loglikelihood
         return loss
+    
+
+   
