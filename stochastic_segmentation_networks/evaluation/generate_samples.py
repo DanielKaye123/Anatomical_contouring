@@ -4,14 +4,21 @@ import numpy as np
 from evaluator import Evaluator
 from running_metrics.running_sample_generator import RunningSampleGenerator
 from running_metrics.samplers import LowRankMultivariateNormalRandomSampler, \
-    LowRankMultivariateNormalClassWeightedRangeSampler, CategoricalSampler
+    LowRankMultivariateNormalClassWeightedRangeSampler, CategoricalSampler, LowRankMultivariateNormalTemperatureScaledRandomSampler
 from visualisation.slice_visualizer import MostLoadedSliceVisualiser
 import argparse
 
-class_names = ['background', 'non-enhancing tumor', 'oedema', 'enhancing tumor']
-class_mergers = {'tumor core': {'non-enhancing tumor', 'enhancing tumor'}}
-DEVICE = 0
+from torch.cuda.amp import autocast
 
+
+#DEVICE = 1
+DEVICE = "cpu"
+
+
+
+#class_names = ["backgorund", "Bones", "FemoralHead_L", "FemoralHead_R", "Bladder", "Anorectum", "Bowel-bag", "Bowel-loops", "CTVp"]
+#class_names = ["backgorund", "Bladder", "Anorectum", "CTVp"]
+class_names = ["Foreground", "CTVn", "CTVp", "Anorectum"]
 
 # these are useless, random_sampler is just used to generate noisy samples and deterministic_sampler to
 # calculate generalised energy distance without having to change too much code around
@@ -33,12 +40,19 @@ def get_samplers_stochastic(num_samples):
                                                 'num_samples': num_samples}}
     return samplers
 
+def get_samplers_stochastic_temp_scaled(num_samples, temperature):
+    samplers = {'random_sampler_samples_only': {'sampler_class': LowRankMultivariateNormalTemperatureScaledRandomSampler,
+                                                'sampler_kwargs': {'device': torch.device(DEVICE), 'temperature': temperature, 'seed': None},
+                                                'extra_maps': ['logit_mean', 'cov_diag', 'cov_factor'],
+                                                'require_prob_maps': False,
+                                                'num_samples': num_samples}}
+    return samplers
 
 def get_class_weigthed_samplers(scale_range=3):
     kwargs = {'device': torch.device(DEVICE), 'from_mean': False, 'seed': 7}
     r = scale_range
     samplers = {}
-    for i in range(4):
+    for i in range(len(class_names)):
         kwargs.update({'class_index': i, 'scale_range': np.linspace(-r, r, 2 * r + 1).tolist()})
         samplers.update(
             {f'class_weighted_sampler_c_{i:d}_samples_only': {
@@ -50,13 +64,19 @@ def get_class_weigthed_samplers(scale_range=3):
     return samplers
 
 
-def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_samples=20):
+def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_samples=10):
+    ## TODO: Change to a parameter in config
+    temperature = 0.001
+   
     running_metrics = {}
 
     samplers = {}
     if deterministic:
         if detailed:
             samplers = get_samplers_deterministic(num_samples)
+    elif temperature != None:
+        print("Temperature scale: ", temperature)
+        samplers = get_samplers_stochastic_temp_scaled(num_samples, temperature)
     else:
         samplers = get_samplers_stochastic(num_samples)
         if detailed:
@@ -73,11 +93,11 @@ def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_sam
                                                             block_size=min(2, num_samples))})
 
     evaluator = Evaluator(class_names,
-                          running_metrics,
-                          prediction_name='prediction',
-                          target_name='seg',
-                          mask_name='sampling_mask',
-                          prob_map_name='prob_maps')
+                        running_metrics,
+                        prediction_name='prediction',
+                        target_name='seg',
+                        mask_name='sampling_mask',
+                        prob_map_name='prob_maps')
 
     running_metrics = evaluator(csv_path)
 
@@ -87,13 +107,14 @@ def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_sam
 
 
 def make_sample_thumbs(sampling_csv, num_samples, number_of_cases_to_plot=50):
+    print("Make sample thumbs")
     path = sampling_csv.replace('.csv', '/rgb_slices')
     sample_names = [f'sample_{i:d}' for i in range(num_samples)]
     overlay_suffixes = ['seg', 'prediction'] + sample_names
     heat_map_suffixes = ['marginal_entropy']
     MostLoadedSliceVisualiser(path,
                               sampling_csv,
-                              image_suffix='t1ce',
+                              image_suffix="CT", #'t1ce'
                               overlay_suffixes=overlay_suffixes,
                               heat_map_suffixes=heat_map_suffixes,
                               save_individual_thumbs=False,
