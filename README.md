@@ -2,7 +2,7 @@
 Final year project doe
 
 Stochastic segmentation code is originally from paper / repo:
-
+https://github.com/biomedia-mira/stochastic_segmentation_networks
 Monteiro, M., Folgoc, L., Castro, D.C., Pawlowski, N., Marques, B., Kamnitsas, K., van der Wilk, M. and Glocker, B., Stochastic Segmentation Networks: Modelling Spatially Correlated Aleatoric Uncertainty, 2020
 
 Main changes:
