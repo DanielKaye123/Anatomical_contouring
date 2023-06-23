@@ -5,17 +5,20 @@ from evaluator import Evaluator
 from running_metrics.running_confusion_matrix import RunningConfusionMatrix
 from running_metrics.running_probability_distribution import RunningDistributionStatistics
 from running_metrics.samplers import LowRankMultivariateNormalRandomSampler, \
-    LowRankMultivariateNormalClassWeightedRangeSampler, CategoricalSampler, CategoricalDeterministicSampler
+    LowRankMultivariateNormalClassWeightedRangeSampler, CategoricalSampler, CategoricalDeterministicSampler, LowRankMultivariateNormalTemperatureScaledRandomSampler
 from metrics.overlap_metrics import OverlapMetrics
 from visualisation.report import report
 from visualisation.slice_visualizer import MostLoadedSliceVisualiser
 from metrics.distribution_statistics import DistributionStatistics
 import argparse
 
-class_names = ['background', 'non-enhancing tumor', 'oedema', 'enhancing tumor']
-class_mergers = {'tumor core': {'non-enhancing tumor', 'enhancing tumor'}}
-DEVICE = 0
+#class_names = ['background', 'non-enhancing tumor', 'oedema', 'enhancing tumor']
+#class_mergers = {'Bones' : {'Bones', "FemoralHead_L", "FemoralHead_R"}, 'Bowel-bag': {"Bowel-bag", "Bowel-loops"}}
+DEVICE = "cpu"
 
+#class_names = ["backgorund", "Bones", "FemoralHead_L", "FemoralHead_R", "Bladder", "Anorectum", "Bowel-bag", "Bowel-loops", "CTVp"]
+class_names = ["Foreground", "CTVn", "CTVp", "Anorectum"]
+class_mergers = {}
 
 # these are useless, random_sampler is just used to generate noisy samples and deterministic_sampler to
 # calculate generalised energy distance without having to change too much code around
@@ -42,12 +45,19 @@ def get_samplers_stochastic():
                                    'num_samples': 100}}
     return samplers
 
+def get_samplers_stochastic_temp_scaled(num_samples, temperature):
+    samplers = {'random_sampler_samples_only': {'sampler_class': LowRankMultivariateNormalTemperatureScaledRandomSampler,
+                                                'sampler_kwargs': {'device': torch.device(DEVICE), 'temperature': temperature, 'seed': None},
+                                                'extra_maps': ['logit_mean', 'cov_diag', 'cov_factor'],
+                                                'require_prob_maps': False,
+                                                'num_samples': 10}}
+    return samplers
 
 def get_class_weigthed_samplers(scale_range=3):
     kwargs = {'device': torch.device(DEVICE), 'from_mean': False, 'seed': 7}
     r = scale_range
     samplers = {}
-    for i in range(4):
+    for i in range(len(class_names)):
         kwargs.update({'class_index': i, 'scale_range': np.linspace(-r, r, 2 * r + 1).tolist()})
         samplers.update(
             {f'class_weighted_sampler_c_{i:d}': {'sampler_class': LowRankMultivariateNormalClassWeightedRangeSampler,
@@ -62,9 +72,14 @@ def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_sam
     running_metrics = {'cm': RunningConfusionMatrix(class_names)}
 
     samplers = {}
+    
+    # TODO: make temperature a parameter
+    temperature = 0.001
     if deterministic:
         if detailed:
             samplers = get_samplers_deterministic()
+    if temperature != None:
+        samplers = get_samplers_stochastic_temp_scaled(num_samples_cap, temperature)
     else:
         samplers = get_samplers_stochastic()
         if detailed:
@@ -97,12 +112,16 @@ def evaluate(csv_path, deterministic, detailed=False, make_thumbs=False, num_sam
     overlap_metrics = OverlapMetrics(running_metrics['cm'])
     overlap_metrics.add_merged_dataframe(class_mergers)
     report(overlap_metrics.dataframes, metrics_to_report=('DSC',))
+
+    plot = DistributionStatistics(running_metrics[key], class_names, overlap_metrics) # Generate plot
+   
     for key in samplers.keys():
         # I am not showing the other numbers because they don't make sense even though they can be computed
         # I don't want people to get confused
         if (key == 'random_sampler' and not deterministic) or (deterministic and key == 'deterministic_sampler'):
             dist_stats = DistributionStatistics(running_metrics[key], class_names, class_mergers)
             dist_stats.report(['DSC'])
+            
     return overlap_metrics.dataframes
 
 
@@ -113,7 +132,7 @@ def make_sample_thumbs(sampling_csv, num_samples, number_of_cases_to_plot=50):
     heat_map_suffixes = ['marginal_entropy']
     MostLoadedSliceVisualiser(path,
                               sampling_csv,
-                              image_suffix='t1ce',
+                              image_suffix='CT', 
                               overlay_suffixes=overlay_suffixes,
                               heat_map_suffixes=heat_map_suffixes,
                               save_individual_thumbs=False,
