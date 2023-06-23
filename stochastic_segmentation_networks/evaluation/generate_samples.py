@@ -14,8 +14,6 @@ from torch.cuda.amp import autocast
 #DEVICE = 1
 DEVICE = "cpu"
 
-
-
 #class_names = ["backgorund", "Bones", "FemoralHead_L", "FemoralHead_R", "Bladder", "Anorectum", "Bowel-bag", "Bowel-loops", "CTVp"]
 #class_names = ["backgorund", "Bladder", "Anorectum", "CTVp"]
 class_names = ["Foreground", "CTVn", "CTVp", "Anorectum"]
