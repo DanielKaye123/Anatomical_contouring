@@ -1,4 +1,5 @@
 # Anatomical_contouring
+Final year project doe
 
 Stochastic segmentation code is originally from paper / repo:
 
@@ -10,3 +11,16 @@ Main changes:
 - Adds code to train the mean seperately from the covariance parameters. This is disabled by default
 - Adds sampler code for temeperature scaling. Defaults to 0.001 temperature
 - Fixes issue with distributions.py
+- Adds /fixes code to plot the graphs in the report.
+- Successfully trained model is included under assets folder. 
+
+
+
+Repo also includes code for:
+- Resampling
+- evaluation, under evaluation/eval ->  including code for splitting femoral heads
+- Code to generate the nnunet modeles. Code for setting up region based, multi class and esemble models. This is to be used with nnunet repo. https://github.com/MIC-DKFZ/nnUNet/tree/master
+- Code for plotting intensities, and also showing the distribution of intensities before/ after label smoothing is applied. White box indicates patch that is drawn
+- Finding min max instensities
+- Also finding which regions overlap (see parse_data jupyter file)
+- Other miscellaneous functions.
