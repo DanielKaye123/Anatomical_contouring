@@ -1,11 +1,11 @@
 from running_metrics.running_probability_distribution import RunningDistributionStatistics
 import numpy as np
 from utils.stats import compute_metrics_from_cm, iqr_v2
-from metrics.overlap_metrics import merge_cm_classes
+from metrics.overlap_metrics import merge_cm_classes, OverlapMetrics
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 from utils.stats import nanstderr
-
+import os
 
 def add_volume_metrics(metrics, voxel_spacing):
     metrics['True Volume (ml)'] = metrics['ConditionPositive'] * voxel_spacing
@@ -17,7 +17,7 @@ def add_volume_metrics(metrics, voxel_spacing):
 
 
 class DistributionStatistics(object):
-    def __init__(self, runnning_dist_stats: RunningDistributionStatistics, class_names, class_mergers=None):
+    def __init__(self, runnning_dist_stats: RunningDistributionStatistics, class_names, overlap_metrics: OverlapMetrics, class_mergers={}):
         self.class_mergers = class_mergers
         self.cms = np.array(runnning_dist_stats.cms)
         class_names[0] = 'lesion (any)'
@@ -30,6 +30,9 @@ class DistributionStatistics(object):
                                 'diversity': np.array(runnning_dist_stats.diversity),
                                 'ged': np.array(runnning_dist_stats.ged),
                                 'average_pixel_wise_entropy': np.array(runnning_dist_stats.average_pixel_wise_entropy)}
+        
+        overlap_df = overlap_metrics.dataframes
+        self.sample_distribution_plot("DSC", overlap_metrics_dataframes=overlap_df)
 
     def _compute_metrics_from_cms(self, class_mergers):
         per_class_metrics = {key: {} for key in self.class_names}
@@ -57,9 +60,11 @@ class DistributionStatistics(object):
             metrics = add_volume_metrics(metrics, self.voxel_volume)
             for metric, value in metrics.items():
                 per_class_metrics[class_name][metric] = value[:, 1].reshape(batch_shape)
+       
         return per_class_metrics
 
     def report(self, metrics_to_report=('DSC', 'Predicted Volume (ml)')):
+        
         functions = {'mean': np.nanmean,
                      'std': np.nanstd,
                      'median': np.nanmedian,
@@ -95,7 +100,15 @@ class DistributionStatistics(object):
             print(metric_to_report)
             print(tabulate(table, headers=headers, tablefmt="plain"))
 
+           
+        
+        
+       
+    ## This function generates figure 5 in the report. Todo: add overlap metrics to get the yellow bars and display the mean. 
     def sample_distribution_plot(self, metric_name, overlap_metrics_dataframes=None):
+        print("Sample distribution plot")
+        output_dir = "....."
+
         per_class_data = {}
         per_class_benchmark = {}
         for class_, metrics in self.per_class_metrics.items():
@@ -106,7 +119,7 @@ class DistributionStatistics(object):
                 per_class_benchmark[class_] = overlap_metrics_dataframes[class_][metric_name][order]
 
         all_data = np.array(
-            [per_class_data[class_] for class_ in per_class_data.keys() if class_ not in self.class_mergers])
+            [per_class_data[class_] for class_ in per_class_data.keys() if class_ not in self.class_mergers]) 
         avg_all_data = np.nanmean(all_data, axis=0)
         order = np.argsort(np.median(avg_all_data, axis=-1))
         per_class_data['avg'] = avg_all_data[order]
@@ -127,9 +140,11 @@ class DistributionStatistics(object):
             # COLOR_SCHEME = ['#800080', '#FF0000', '#26CC14', '#0496FF', '#F4B400']
 
             if overlap_metrics_dataframes is not None:
+                print("Overlap metric")
                 benchmark = per_class_benchmark[class_]
                 x = np.array(list(range(1, len(benchmark) + 1)), dtype=np.float32)
                 ax.set_ylabel('DSC', fontweight='bold', fontsize=15)
+                ax.set_xlabel("Patient " + class_ + " Samples", fontweight='bold', fontsize=15)
                 ax.scatter(x, benchmark, marker='x', color='black', zorder=10)
                 quality = np.mean(per_class_data[class_] > np.expand_dims(benchmark, axis=-1), axis=-1)
                 ax.bar(x, quality, color='#ffd604', zorder=-1, edgecolor='#9e9100', align='center', width=1.)
@@ -142,3 +157,10 @@ class DistributionStatistics(object):
             ax.set_ylim((0, 1))
             fig.show()
 
+
+            if output_dir is not None:
+                output_path = os.path.join(output_dir, f"plot_{class_}.png")  # Specify the desired output file path
+                plt.savefig(output_path)
+                plt.close(fig)
+
+       
