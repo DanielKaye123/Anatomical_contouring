@@ -5,17 +5,29 @@ from typing import Tuple
 
 class ReshapedDistribution(td.Distribution):
     def __init__(self, base_distribution: td.Distribution, new_event_shape: Tuple[int, ...]):
-        super().__init__(batch_shape=base_distribution.batch_shape, event_shape=new_event_shape)
         self.base_distribution = base_distribution
         self.new_shape = base_distribution.batch_shape + new_event_shape
-
+        super().__init__(batch_shape=base_distribution.batch_shape, event_shape=new_event_shape, validate_args=None)
+        
+    @property
+    def cov_diag(self):
+        return self.base_distribution.cov_diag
+    
+    @property
+    def loc(self):
+        return self.base_distribution.loc
+    
+    @property
+    def cov_factor(self):
+        return self.base_distribution.cov_factor
+    
     @property
     def support(self):
         return self.base_distribution.support
 
     @property
     def arg_constraints(self):
-        return self.base_distribution.arg_constraints()
+        return self.base_distribution.arg_constraints
 
     @property
     def mean(self):
@@ -33,3 +45,6 @@ class ReshapedDistribution(td.Distribution):
 
     def entropy(self):
         return self.base_distribution.entropy()
+    
+    def __getattr__(self, name):
+        return getattr(self.base_distribution, name)
